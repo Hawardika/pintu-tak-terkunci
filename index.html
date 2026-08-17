@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Pintu Tak Terkunci — Simulasi Keamanan Digital</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --ink:#0A0E1A; --panel:#151E2E; --panel-2:#20304480;
+    --panel-solid:#1E2A3D;
+    --brass:#E8B93F; --brass-soft:#B78F2E; --alert:#F0685C; --safe:#5FC189;
+    --paper:#F6F2E7; --paper-dim:#C3CBD6; --line: rgba(246,242,231,0.15);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--ink);color:var(--paper);font-family:'Inter',sans-serif;overflow-x:hidden;}
+  ::selection{background:var(--brass);color:var(--ink);}
+  h1,h2,h3,h4,.display{font-family:'Space Grotesk',sans-serif;color:var(--paper);}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  #app{min-height:100vh;width:100%;position:relative;}
+  .screen{min-height:100vh;width:100%;display:none;flex-direction:column;align-items:center;justify-content:flex-start;padding:32px 20px 60px;position:relative;}
+  .screen.active{display:flex;}
+  .screen.center{justify-content:center;}
+
+  .grain{position:fixed;inset:0;pointer-events:none;opacity:0.05;z-index:0;
+    background-image:radial-gradient(circle at 20% 30%, var(--paper) 0.5px, transparent 0.5px); background-size:3px 3px;}
+  .scanlines{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0.35;
+    background:repeating-linear-gradient(180deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(255,255,255,0.015) 3px);}
+
+  .vault-wrap{position:relative;width:170px;height:170px;margin:0 auto 22px;}
+  .vault-dial{width:100%;height:100%;border-radius:50%;
+    background: radial-gradient(circle at 35% 30%, #2c3f58, var(--panel) 60%, #0d1622 100%);
+    border:3px solid var(--brass-soft); box-shadow: inset 0 0 30px rgba(0,0,0,0.6), 0 0 0 6px rgba(232,185,63,0.08);
+    display:flex;align-items:center;justify-content:center; position:relative;}
+  .vault-dial::before{content:'';position:absolute;inset:14px;border-radius:50%;border:1px solid var(--line);}
+  .vault-needle{position:absolute;width:3px;height:58px;background:var(--brass);left:50%;bottom:50%;transform-origin:50% 100%;
+    transform:translateX(-50%) rotate(0deg); border-radius:2px; transition: transform 1s cubic-bezier(.3,1.4,.4,1); box-shadow:0 0 10px rgba(232,185,63,0.7);}
+  .vault-hub{position:absolute;width:14px;height:14px;border-radius:50%;background:var(--brass);left:50%;top:50%;transform:translate(-50%,-50%);box-shadow:0 0 12px rgba(232,185,63,0.85);}
+  .vault-crack{position:absolute;inset:0;border-radius:50%;pointer-events:none;opacity:0;transition:opacity 0.6s ease;box-shadow: inset 0 0 40px 8px rgba(240,104,92,0.55);}
+  .vault-wrap.ajar .vault-crack{opacity:1;}
+
+  .eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.18em;text-transform:uppercase;color:var(--brass);margin-bottom:10px;}
+  .headline{font-size:clamp(26px,7vw,40px);line-height:1.06;font-weight:700;margin:0 0 14px;text-align:center;letter-spacing:-0.01em;color:var(--paper);}
+  .sub{font-size:15px;color:var(--paper-dim);text-align:center;max-width:420px;margin:0 auto 24px;line-height:1.6;}
+  .max-w{max-width:460px;width:100%;margin:0 auto;}
+
+  .btn{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;border:none;border-radius:10px;
+    padding:16px 22px;cursor:pointer;width:100%;text-align:left;display:flex;align-items:center;gap:14px;
+    transition:transform 0.15s ease, box-shadow 0.15s ease;}
+  .btn:active{transform:scale(0.98);}
+  .btn-primary{background:var(--brass);color:#241A05;justify-content:center;font-size:16px;}
+  .btn-primary:hover{box-shadow:0 6px 20px rgba(232,185,63,0.3);}
+  .btn-ghost{background:transparent;color:var(--paper-dim);border:1px solid var(--line);justify-content:center;font-size:13px;padding:10px 16px;width:auto;}
+  .btn-ghost:hover{color:var(--paper);border-color:var(--brass-soft);}
+  .choice{background:var(--panel-solid);border:1px solid var(--line);color:var(--paper);}
+  .choice:hover{border-color:var(--brass-soft);}
+  .choice .k{font-family:'IBM Plex Mono',monospace;color:var(--brass);font-size:13px;flex-shrink:0;width:22px;}
+  .choice .t{font-size:14.5px;line-height:1.4;color:var(--paper);}
+
+  .mode-card{background:var(--panel-solid);border:1px solid var(--line);border-radius:16px;padding:20px;width:100%;text-align:left;cursor:pointer;margin-bottom:14px;transition:border-color .15s ease, transform .15s ease;}
+  .mode-card:active{transform:scale(0.98);}
+  .mode-card:hover{border-color:var(--brass-soft);}
+  .mode-card .mtag{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--brass);letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;}
+  .mode-card h3{margin:0 0 6px;font-size:19px;color:var(--paper);}
+  .mode-card p{margin:0;font-size:13.5px;color:var(--paper-dim);line-height:1.55;}
+
+  .badge{display:inline-flex;align-items:center;gap:8px;background:var(--panel-solid);border:1px solid var(--line);
+    padding:6px 12px;border-radius:100px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--paper-dim);margin-bottom:18px;letter-spacing:0.04em;}
+  .badge .dot{width:6px;height:6px;border-radius:50%;background:var(--brass);}
+  .case-file{background:var(--panel-solid);border:1px solid var(--line);border-radius:16px;padding:24px 20px;margin-bottom:22px;position:relative;overflow:hidden;}
+  .case-file::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--brass);}
+  .case-file p{font-size:15.5px;line-height:1.6;margin:0;color:var(--paper);}
+  .case-file .scene{font-size:32px;margin-bottom:10px;display:block;}
+
+  .consequence{border-radius:16px;padding:22px 20px;margin-bottom:16px;border:1px solid var(--line);animation:rise 0.4s ease;}
+  @keyframes rise{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+  .consequence.bad{background:linear-gradient(180deg, rgba(240,104,92,0.14), rgba(240,104,92,0.03));border-color:rgba(240,104,92,0.4);}
+  .consequence.good{background:linear-gradient(180deg, rgba(95,193,137,0.14), rgba(95,193,137,0.03));border-color:rgba(95,193,137,0.4);}
+  .consequence .tag{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;}
+  .consequence.bad .tag{color:var(--alert);} .consequence.good .tag{color:var(--safe);}
+  .consequence h3{font-size:19px;margin:0 0 8px;color:var(--paper);}
+  .consequence p{font-size:14.5px;line-height:1.6;color:var(--paper-dim);margin:0 0 10px;}
+  .consequence .fact{font-size:13px;color:var(--paper);background:rgba(0,0,0,0.25);padding:12px 14px;border-radius:10px;line-height:1.55;}
+
+  .progress{display:flex;gap:6px;margin-bottom:24px;width:100%;max-width:280px;}
+  .progress .seg{flex:1;height:4px;border-radius:2px;background:var(--panel-solid);overflow:hidden;}
+  .progress .seg.done{background:var(--brass);} .progress .seg.now{background:linear-gradient(90deg,var(--brass),var(--panel-solid));}
+
+  .stamp{width:106px;height:106px;border-radius:50%;border:3px solid var(--brass);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;transform:rotate(-6deg);}
+  .stamp .n{font-family:'Space Grotesk',sans-serif;font-size:32px;font-weight:700;color:var(--brass);}
+  .result-grid{display:grid;grid-template-columns:1fr;gap:10px;width:100%;margin:20px 0;}
+  .result-row{display:flex;align-items:center;justify-content:space-between;background:var(--panel-solid);border:1px solid var(--line);border-radius:12px;padding:14px 16px;}
+  .result-row .label{font-size:13.5px;color:var(--paper-dim);}
+  .result-row .pill{font-family:'IBM Plex Mono',monospace;font-size:11px;padding:4px 10px;border-radius:100px;letter-spacing:0.03em;}
+  .pill.good{background:rgba(95,193,137,0.18);color:var(--safe);} .pill.bad{background:rgba(240,104,92,0.18);color:var(--alert);}
+  .lab-link{background:transparent;border:1px solid var(--line);color:var(--brass);border-radius:8px;width:30px;height:30px;font-size:13px;cursor:pointer;padding:0;flex-shrink:0;}
+  .lab-link:hover{border-color:var(--brass-soft);}
+  .class-teaser{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--paper-dim);text-align:center;margin-top:18px;line-height:1.7;}
+  .class-teaser b{color:var(--brass);}
+
+  .lab-header{display:flex;align-items:center;gap:12px;width:100%;max-width:460px;margin-bottom:18px;}
+  .back-btn{background:var(--panel-solid);border:1px solid var(--line);color:var(--paper-dim);border-radius:10px;padding:10px 12px;cursor:pointer;font-size:16px;line-height:1;}
+  .cat-tabs{display:flex;gap:8px;width:100%;max-width:460px;margin-bottom:18px;overflow-x:auto;padding-bottom:2px;}
+  .cat-tab{font-family:'IBM Plex Mono',monospace;font-size:11.5px;letter-spacing:0.04em;padding:8px 14px;border-radius:100px;border:1px solid var(--line);background:var(--panel-solid);color:var(--paper-dim);cursor:pointer;white-space:nowrap;flex-shrink:0;}
+  .cat-tab.active{background:var(--brass);color:#241A05;border-color:var(--brass);font-weight:600;}
+  .attack-grid{display:grid;grid-template-columns:1fr;gap:12px;width:100%;max-width:460px;}
+  .attack-card{background:var(--panel-solid);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;gap:14px;align-items:center;cursor:pointer;text-align:left;transition:border-color .15s ease, transform .15s ease;}
+  .attack-card:active{transform:scale(0.98);}
+  .attack-card:hover{border-color:var(--brass-soft);}
+  .attack-card .icon{font-size:26px;flex-shrink:0;width:42px;height:42px;background:rgba(255,255,255,0.05);border-radius:10px;display:flex;align-items:center;justify-content:center;}
+  .attack-card .txt h4{margin:0 0 3px;font-size:15px;color:var(--paper);}
+  .attack-card .txt p{margin:0;font-size:12.5px;color:var(--paper-dim);line-height:1.4;}
+  .attack-card .cattag{font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:var(--brass);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:3px;display:block;}
+
+  .attack-stage{position:relative;width:100%;max-width:340px;height:190px;margin:0 auto 16px;background:var(--panel-solid);border:1px solid var(--line);border-radius:14px;overflow:hidden;}
+  .attack-stage .actor{position:absolute;font-size:30px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5));}
+  .attack-stage .lbl{position:absolute;font-family:'IBM Plex Mono',monospace;font-size:8.5px;color:var(--paper-dim);white-space:nowrap;top:100%;left:50%;transform:translateX(-50%);margin-top:2px;}
+  .attack-stage .line{position:absolute;height:2px;background:repeating-linear-gradient(90deg,var(--paper-dim) 0 6px, transparent 6px 12px);}
+  .attack-stage .flyicon{position:absolute;font-size:15px;opacity:0;}
+  .attack-stage .ring{position:absolute;border:2px solid var(--alert);border-radius:50%;opacity:0;}
+  .attack-stage .bar{position:absolute;width:5px;background:var(--safe);border-radius:2px;bottom:22%;}
+
+  .caption-box{width:100%;max-width:340px;min-height:48px;text-align:center;font-size:13.5px;color:var(--paper);margin:0 auto 18px;line-height:1.55;padding:0 8px;}
+  .caption-dots{display:flex;gap:5px;justify-content:center;margin-bottom:10px;}
+  .caption-dots span{width:6px;height:6px;border-radius:50%;background:var(--panel-solid);transition:background .2s ease;}
+  .caption-dots span.on{background:var(--brass);}
+
+  .info-block{background:var(--panel-solid);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:12px;width:100%;}
+  .info-block .tag{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--brass);margin-bottom:8px;}
+  .info-block p{margin:0;font-size:13.5px;line-height:1.6;color:var(--paper-dim);}
+  .info-block ul{margin:0;padding-left:18px;}
+  .info-block li{font-size:13.5px;line-height:1.7;color:var(--paper-dim);}
+  .gterm{margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line);}
+  .gterm:last-child{margin-bottom:0;padding-bottom:0;border-bottom:none;}
+  .gterm b{display:block;font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--brass);margin-bottom:4px;letter-spacing:0.02em;}
+  .gterm span{font-size:13px;line-height:1.55;color:var(--paper-dim);}
+  .attack-nav{display:flex;gap:10px;width:100%;max-width:340px;margin-top:6px;}
+
+  /* ===== engines: base timing 6.4s per replay, slower pacing ===== */
+  .eng-sniff .you{left:4%;top:62%;} .eng-sniff .srv{left:80%;top:62%;font-size:24px;}
+  .eng-sniff .theline{left:16%;top:76%;width:68%;}
+  .eng-sniff .packet{left:16%;top:70%;font-size:16px;opacity:0;}
+  .eng-sniff .attacker{font-size:24px;opacity:0.35;}
+  .eng-sniff:not(.mitm) .attacker{left:44%;top:12%;}
+  .eng-sniff.mitm .attacker{left:44%;top:60%;}
+  .eng-sniff .clone{left:44%;top:70%;font-size:13px;opacity:0;}
+  @keyframes pkMove{0%{left:16%;opacity:0;}10%{opacity:1;}45%{left:44%;}60%{left:44%;}100%{left:80%;opacity:1;}}
+  .eng-sniff.play .packet{animation:pkMove 6.4s ease-in-out forwards;}
+  @keyframes atkPulse{0%,38%{opacity:0.35;transform:scale(1);}50%,60%{opacity:1;transform:scale(1.35);}75%,100%{opacity:0.55;transform:scale(1);}}
+  .eng-sniff.play .attacker{animation:atkPulse 6.4s ease-in-out forwards;}
+  @keyframes cloneUp{0%,48%{opacity:0;top:70%;}58%{opacity:1;top:70%;}100%{opacity:1;top:18%;}}
+  @keyframes cloneStay{0%,48%{opacity:0;}58%,100%{opacity:1;}}
+  .eng-sniff:not(.mitm).play .clone{animation:cloneUp 6.4s ease forwards;}
+  .eng-sniff.mitm.play .clone{animation:cloneStay 6.4s ease forwards;}
+
+  .eng-wardrive .car{left:2%;top:70%;font-size:24px;}
+  .eng-wardrive .house{font-size:24px;}
+  .eng-wardrive .house1{left:26%;top:30%;} .eng-wardrive .house2{left:50%;top:30%;} .eng-wardrive .house3{left:74%;top:30%;}
+  .eng-wardrive .lock{position:absolute;font-size:12px;top:-14px;left:50%;transform:translateX(-50%);}
+  .eng-wardrive .warn{position:absolute;font-size:16px;opacity:0;left:50%;top:-30px;transform:translateX(-50%);}
+  @keyframes carMove{0%{left:2%;}55%{left:44%;}75%{left:44%;}100%{left:86%;}}
+  .eng-wardrive.play .car{animation:carMove 6.4s ease-in-out forwards;}
+  @keyframes warnPop{0%,54%{opacity:0;transform:translateX(-50%) scale(0.5);}64%,85%{opacity:1;transform:translateX(-50%) scale(1.1);}100%{opacity:0.75;transform:translateX(-50%) scale(1);}}
+  .eng-wardrive.play .house2 .warn{animation:warnPop 6.4s ease-in-out forwards;}
+
+  .eng-jam .wifi{left:44%;top:36%;font-size:34px;}
+  .eng-jam .attacker{left:80%;top:60%;font-size:26px;}
+  .eng-jam .barrow{position:absolute;left:44%;top:78%;display:flex;gap:3px;}
+  .eng-jam .ring{left:80%;top:60%;width:20px;height:20px;margin-left:-10px;margin-top:-10px;}
+  .eng-jam .xmark{position:absolute;left:44%;top:36%;font-size:34px;opacity:0;}
+  @keyframes ringGrow{0%{width:20px;height:20px;margin-left:-10px;margin-top:-10px;opacity:0.8;}100%{width:90px;height:90px;margin-left:-45px;margin-top:-45px;opacity:0;}}
+  .eng-jam.play .ring{animation:ringGrow 2.1s ease-out infinite;}
+  .eng-jam.play .ring2{animation-delay:0.7s;}
+  .eng-jam.play .ring3{animation-delay:1.4s;}
+  @keyframes barShrink{0%,25%{transform:scaleY(1);opacity:1;}92%,100%{transform:scaleY(0.05);opacity:0.3;}}
+  .eng-jam.play .bar{animation:barShrink 6.4s ease-in forwards;}
+  @keyframes xFade{0%,75%{opacity:0;}100%{opacity:1;}}
+  .eng-jam.play .xmark{animation:xFade 6.4s ease forwards;color:var(--alert);}
+
+  .eng-bt .device{left:8%;top:56%;font-size:28px;} .eng-bt .attacker{left:76%;top:56%;font-size:26px;}
+  .eng-bt .ring{left:8%;top:56%;width:20px;height:20px;margin-left:4px;margin-top:4px;border-color:var(--brass);}
+  .eng-bt .conn{position:absolute;left:24%;top:63%;width:0%;height:2px;background:var(--alert);opacity:0;}
+  .eng-bt .flyicon{top:60%;left:24%;}
+  @keyframes btRing{0%{width:20px;height:20px;opacity:0.9;}100%{width:70px;height:70px;margin-left:-11px;margin-top:-11px;opacity:0;}}
+  .eng-bt.play .ring{animation:btRing 1.6s ease-out 2;}
+  @keyframes connGrow{0%,55%{width:0%;opacity:0;}65%{opacity:1;}100%{width:52%;opacity:1;}}
+  .eng-bt.play .conn{animation:connGrow 6.4s ease forwards;}
+  @keyframes fly1{0%,65%{opacity:0;left:24%;top:60%;}78%{opacity:1;}100%{opacity:1;left:74%;top:56%;}}
+  @keyframes fly2{0%,73%{opacity:0;left:24%;top:66%;}86%{opacity:1;}100%{opacity:1;left:74%;top:62%;}}
+  .eng-bt.play .fly1{animation:fly1 6.4s ease forwards;}
+  .eng-bt.play .fly2{animation:fly2 6.4s ease forwards;}
+
+  .eng-infect .phone{left:38%;top:50%;font-size:32px;}
+  .eng-infect .attacker{left:82%;top:30%;font-size:24px;opacity:0;}
+  .eng-infect .app{left:40%;top:14%;font-size:22px;}
+  .eng-infect .skull{left:40%;top:14%;font-size:22px;opacity:0;}
+  .eng-infect .track{position:absolute;left:24%;top:34%;width:52%;height:5px;background:var(--panel-solid);border-radius:3px;overflow:hidden;}
+  .eng-infect .fill{height:100%;width:0%;background:var(--brass);}
+  @keyframes fillGrow{0%,8%{width:0%;}45%{width:100%;}100%{width:100%;}}
+  .eng-infect.play .fill{animation:fillGrow 6.4s ease forwards;}
+  @keyframes appFade{0%,46%{opacity:1;}56%{opacity:0;}100%{opacity:0;}}
+  @keyframes skullFade{0%,46%{opacity:0;}56%{opacity:1;}100%{opacity:1;}}
+  .eng-infect.play .app{animation:appFade 6.4s ease forwards;}
+  .eng-infect.play .skull{animation:skullFade 6.4s ease forwards;}
+  .eng-infect.play .attacker{animation:xFade 6.4s ease forwards;}
+  @keyframes dataFly1{0%,62%{opacity:0;left:44%;top:50%;}74%{opacity:1;}100%{opacity:1;left:80%;top:34%;}}
+  @keyframes dataFly2{0%,70%{opacity:0;left:44%;top:56%;}82%{opacity:1;}100%{opacity:1;left:80%;top:44%;}}
+  .eng-infect.play .fly1{animation:dataFly1 6.4s ease forwards;}
+  .eng-infect.play .fly2{animation:dataFly2 6.4s ease forwards;}
+
+  .eng-steal .phone{left:42%;top:56%;font-size:30px;}
+  .eng-steal .hand{left:-10%;top:56%;font-size:30px;}
+  .eng-steal .crack{left:42%;top:56%;font-size:20px;opacity:0;}
+  @keyframes handIn{0%{left:-10%;}40%{left:38%;}60%{left:38%;}100%{left:96%;}}
+  .eng-steal.play .hand{animation:handIn 6.4s ease-in-out forwards;}
+  @keyframes phoneGo{0%,40%{left:42%;opacity:1;}60%{left:42%;opacity:1;}100%{left:96%;opacity:0;}}
+  .eng-steal.play .phone{animation:phoneGo 6.4s ease-in-out forwards;}
+  @keyframes crackPop{0%,55%{opacity:0;transform:scale(0.4) rotate(0deg);}65%{opacity:1;transform:scale(1.2) rotate(-8deg);}100%{opacity:0.85;transform:scale(1) rotate(-8deg);}}
+  .eng-steal.play .crack{animation:crackPop 6.4s ease forwards;}
+  @keyframes leak1{0%,60%{opacity:0;left:42%;top:56%;}70%{opacity:1;}100%{opacity:1;left:20%;top:84%;}}
+  @keyframes leak2{0%,66%{opacity:0;left:46%;top:60%;}78%{opacity:1;}100%{opacity:1;left:66%;top:88%;}}
+  .eng-steal.play .fly1{animation:leak1 6.4s ease forwards;}
+  .eng-steal.play .fly2{animation:leak2 6.4s ease forwards;}
+
+  /* Evil Twin / Rogue AP duplication */
+  .eng-duplicate .apReal{left:12%;top:16%;font-size:26px;}
+  .eng-duplicate .apFake{left:12%;top:62%;font-size:26px;}
+  .eng-duplicate .you{left:78%;top:42%;font-size:28px;}
+  .eng-duplicate .lineReal{position:absolute;left:28%;top:26%;width:46%;height:2px;background:repeating-linear-gradient(90deg,var(--paper-dim) 0 6px, transparent 6px 12px);opacity:0.55;}
+  .eng-duplicate .lineFake{position:absolute;left:28%;top:66%;width:0%;height:2px;background:var(--alert);opacity:0;}
+  .eng-duplicate .flyicon{left:50%;top:66%;font-size:14px;opacity:0;}
+  @keyframes fakeGrow{0%,32%{width:0%;opacity:0;}48%{opacity:1;}100%{width:46%;opacity:1;}}
+  .eng-duplicate.play .lineFake{animation:fakeGrow 6.4s ease forwards;}
+  @keyframes realFade{0%,32%{opacity:0.55;}60%{opacity:0.1;}100%{opacity:0.1;}}
+  .eng-duplicate.play .lineReal{animation:realFade 6.4s ease forwards;}
+  @keyframes apFakePulse{0%,42%{filter:none;}52%,100%{filter:drop-shadow(0 0 8px var(--alert));}}
+  .eng-duplicate.play .apFake{animation:apFakePulse 6.4s ease forwards;}
+  @keyframes dupFly{0%,64%{opacity:0;left:50%;top:66%;}76%{opacity:1;}100%{opacity:1;left:18%;top:64%;}}
+  .eng-duplicate.play .flyicon{animation:dupFly 6.4s ease forwards;}
+
+  /* Weak encryption cracking */
+  .eng-crack .lock{left:40%;top:28%;font-size:36px;}
+  .eng-crack .lockOpen{left:40%;top:28%;font-size:36px;opacity:0;}
+  .eng-crack .attacker{left:78%;top:58%;font-size:26px;}
+  .eng-crack .track{position:absolute;left:18%;top:78%;width:64%;height:6px;background:var(--panel-solid);border-radius:3px;overflow:hidden;}
+  .eng-crack .fill{height:100%;width:0%;background:var(--alert);}
+  @keyframes crackFill{0%,12%{width:0%;}92%{width:100%;}100%{width:100%;}}
+  .eng-crack.play .fill{animation:crackFill 6.4s linear forwards;}
+  @keyframes lockCFade{0%,82%{opacity:1;}94%{opacity:0;}100%{opacity:0;}}
+  @keyframes lockOFade{0%,82%{opacity:0;}94%{opacity:1;}100%{opacity:1;}}
+  .eng-crack.play .lock{animation:lockCFade 6.4s ease forwards;}
+  .eng-crack.play .lockOpen{animation:lockOFade 6.4s ease forwards;}
+  @keyframes crackPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.1);}}
+  .eng-crack.play .attacker{animation:crackPulse 1.8s ease-in-out infinite;}
+
+  /* OS / vulnerability & no antivirus */
+  .eng-vuln .phone{left:40%;top:58%;font-size:32px;}
+  .eng-vuln .shield{left:38%;top:18%;font-size:26px;}
+  .eng-vuln .crackShield{left:38%;top:18%;font-size:26px;opacity:0;}
+  .eng-vuln .bug1{left:6%;top:38%;font-size:16px;opacity:0;}
+  .eng-vuln .bug2{left:88%;top:38%;font-size:16px;opacity:0;}
+  .eng-vuln .bug3{left:10%;top:76%;font-size:16px;opacity:0;}
+  @keyframes bugMove1{0%,22%{opacity:0;left:6%;top:38%;}38%{opacity:1;}100%{opacity:1;left:36%;top:54%;}}
+  @keyframes bugMove2{0%,32%{opacity:0;left:88%;top:38%;}48%{opacity:1;}100%{opacity:1;left:52%;top:54%;}}
+  @keyframes bugMove3{0%,42%{opacity:0;left:10%;top:76%;}58%{opacity:1;}100%{opacity:1;left:40%;top:64%;}}
+  .eng-vuln.play .bug1{animation:bugMove1 6.4s ease forwards;}
+  .eng-vuln.play .bug2{animation:bugMove2 6.4s ease forwards;}
+  .eng-vuln.play .bug3{animation:bugMove3 6.4s ease forwards;}
+  @keyframes shieldFade{0%,68%{opacity:1;}80%{opacity:0;}100%{opacity:0;}}
+  @keyframes crackShieldFade{0%,68%{opacity:0;}80%{opacity:1;}100%{opacity:1;}}
+  .eng-vuln.play .shield{animation:shieldFade 6.4s ease forwards;}
+  .eng-vuln.play .crackShield{animation:crackShieldFade 6.4s ease forwards;}
+
+  /* BYOD shadow-IT mixing */
+  .eng-byod .device{left:8%;top:56%;font-size:30px;}
+  .eng-byod .company{left:78%;top:56%;font-size:28px;}
+  .eng-byod .line{left:24%;top:64%;width:52%;opacity:0.5;}
+  .eng-byod .noshield{left:46%;top:22%;font-size:18px;opacity:0;}
+  .eng-byod .fly1{left:24%;top:56%;font-size:14px;opacity:0;}
+  .eng-byod .fly2{left:24%;top:70%;font-size:14px;opacity:0;}
+  @keyframes noshieldFade{0%,38%{opacity:0;transform:translateY(4px);}50%{opacity:1;transform:translateY(0);}100%{opacity:1;}}
+  .eng-byod.play .noshield{animation:noshieldFade 6.4s ease forwards;}
+  @keyframes byodFly1{0%,50%{opacity:0;left:24%;top:56%;}62%{opacity:1;}100%{opacity:1;left:74%;top:52%;}}
+  @keyframes byodFly2{0%,60%{opacity:0;left:74%;top:66%;}72%{opacity:1;}100%{opacity:1;left:22%;top:70%;}}
+  .eng-byod.play .fly1{animation:byodFly1 6.4s ease forwards;}
+  .eng-byod.play .fly2{animation:byodFly2 6.4s ease forwards;}
+
+  #hostToggle{position:fixed;bottom:16px;right:16px;z-index:50;opacity:0.6;font-size:11px;}
+  .host-header{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:920px;margin-bottom:28px;flex-wrap:wrap;gap:14px;}
+  .host-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;width:100%;max-width:920px;}
+  @media(max-width:720px){.host-grid{grid-template-columns:1fr;}}
+  .qr-card{background:var(--paper);border-radius:16px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:10px;}
+  .qr-card .cap{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#2A2A2A;letter-spacing:0.06em;text-align:center;}
+  .stat-card{background:var(--panel-solid);border:1px solid var(--line);border-radius:16px;padding:20px;}
+  .stat-card h4{margin:0 0 4px;font-size:13px;color:var(--paper-dim);font-weight:500;text-transform:uppercase;letter-spacing:0.06em;}
+  .stat-num{font-family:'Space Grotesk',sans-serif;font-size:40px;font-weight:700;color:var(--brass);}
+  .chapter-stat{margin-bottom:16px;}
+  .chapter-stat .lbl2{display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;color:var(--paper-dim);}
+  .bar-track{height:10px;background:var(--panel-solid);border-radius:5px;overflow:hidden;display:flex;}
+  .bar-fill{height:100%;background:var(--safe);transition:width 0.6s ease;}
+  .live-dot{width:8px;height:8px;border-radius:50%;background:var(--safe);display:inline-block;animation:pulse 1.5s infinite;margin-right:6px;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+
+  .footer-note{font-size:11px;color:var(--paper-dim);text-align:center;margin-top:20px;opacity:0.75;font-family:'IBM Plex Mono',monospace;}
+  @media (prefers-reduced-motion: reduce){*{animation-duration:0.01ms !important;transition-duration:0.01ms !important;}}
+</style>
+</head>
+<body>
+<div class="grain"></div>
+<div class="scanlines"></div>
+<div id="app"></div>
+<button id="hostToggle" class="btn btn-ghost mono">Mode Presenter</button>
+
+<script>
+/* ============ STORY DATA ============ */
+const CHAPTERS = [
+  { key:'wireless', label:'Bab 1 — Wireless', scene:'📶',
+    context:'Kamu masuk kafe buat ngerjain tugas. Kamu buka daftar Wi-Fi dan lihat dua nama muncul: "Kafe_Senja" (butuh password dari kasir) dan "Kafe_Senja_FREE" (langsung connect, tanpa password).',
+    choices:[
+      {id:'risky',label:'Connect ke "Kafe_Senja_FREE" — lebih cepat, nggak usah nanya siapa-siapa.',outcome:'bad',
+        title:'Kamu baru saja masuk Rogue Access Point',
+        body:'Jaringan open tanpa password itu gampang banget dipalsukan. Peretas bisa bikin AP palsu dengan nama mirip aslinya buat mancing korban connect, lalu menyadap semua traffic yang lewat.',
+        fact:'Rogue Access Point adalah AP palsu yang dibuat di luar kendali organisasi, memakai SSID yang mirip untuk menjebak pengguna. Selama pakai jaringan open, data plain-text bisa disadap lewat sniffing / eavesdropping.'},
+      {id:'secure',label:'Tanya kasir buat password "Kafe_Senja" yang resmi (WPA2).',outcome:'good',
+        title:'Koneksi aman terkunci',
+        body:'Jaringan dengan WPA2 mengenkripsi traffic-mu, jauh lebih sulit disadap dibanding jaringan open.',
+        fact:'Analogi dari materi: WEP itu seperti gembok plastik yang gampang dipatahkan, sedangkan WPA2 — apalagi WPA2-Enterprise dengan RADIUS/EAP — itu seperti pintu brankas bertingkat.'}
+    ], labKey:'rogueap' },
+  { key:'bluetooth', label:'Bab 2 — Bluetooth', scene:'🎧',
+    context:'Kelas udah selesai. Headphone Bluetooth-mu masih menyala di dalam tas.',
+    choices:[
+      {id:'risky',label:'Biarin aja discoverable, biar nanti gampang connect lagi.',outcome:'bad',
+        title:'Perangkatmu "terlihat" oleh siapa saja di sekitar',
+        body:'Mode discoverable & pairable yang dibiarkan menyala membuat perangkatmu rentan Denial of Service, pesan spam tak diminta, sampai pencurian file dan kontak.',
+        fact:'Peretas bisa memasang malicious code lewat Bluetooth untuk mengambil alih kontrol perangkat, atau memakainya diam-diam untuk panggilan/akses internet.'},
+      {id:'secure',label:'Matiin Bluetooth begitu selesai dipakai.',outcome:'good',
+        title:'Permukaan seranganmu mengecil',
+        body:'Bluetooth yang mati atau non-discoverable secara default berarti tidak ada yang bisa menemukan perangkatmu untuk dijadikan target.',
+        fact:'Best practice: non-discoverable & non-pairable secara default, pairing hanya di tempat aman, dan hapus paired device yang sudah tidak dipakai.'}
+    ], labKey:'bthijack' },
+  { key:'mobile', label:'Bab 3 — Mobile', scene:'📱',
+    context:'Teman sekelasmu japri: "eh ada app kuota gratis unlimited, viral banget, tinggal download file APK-nya, bukan dari Play Store."',
+    choices:[
+      {id:'risky',label:'Download & install langsung, kan gratis dan katanya work.',outcome:'bad',
+        title:'Free apps can be expensive',
+        body:'Aplikasi di luar toko resmi jauh lebih mudah membawa malicious intent: tracking aktivitas, pencurian data login, sampai fraud.',
+        fact:'Risiko mobile bukan cuma soal kehilangan fisik perangkat — aplikasi berbahaya dan OS yang tidak ter-update sama-sama jadi titik masuk serangan.'},
+      {id:'secure',label:'Skip. Kalau butuh, cari yang resmi di Play Store & cek reviewnya dulu.',outcome:'good',
+        title:'Kamu menutup satu pintu masuk malware',
+        body:'Unduh hanya dari authorized store, hindari rooting/jailbreaking, dan tetap nyalakan PIN kuat + enkripsi perangkat.',
+        fact:'Satu smartphone menyimpan login ID, data bank, dan email sekaligus — sekali compromise, banyak domain informasi ikut terekspos.'}
+    ], labKey:'infect' },
+  { key:'byod', label:'Bab 4 — BYOD', scene:'🧳',
+    context:'Hari pertama magang. Supervisor bilang santai: "daripada ribet minta laptop/HP kantor, install aja email & app kerja langsung di HP pribadimu, biar praktis."',
+    choices:[
+      {id:'risky',label:'Oke, langsung install & login pakai HP pribadi — kan lebih cepat.',outcome:'bad',
+        title:'Kamu baru membuka celah Shadow IT',
+        body:'HP pribadimu sekarang menyimpan data kantor, tapi tim IT sama sekali tidak punya kendali atau visibilitas atasnya — tidak ada MDM, tidak ada kebijakan yang dipaksakan.',
+        fact:'BYOD (Bring Your Own Device) membuka celah "shadow IT" — perangkat pribadi mengakses sumber daya organisasi tanpa pengawasan atau kebijakan keamanan terpusat dari tim IT.'},
+      {id:'secure',label:'Tanya dulu: ada kebijakan BYOD & MDM, atau bisa minta akun kerja terpisah?',outcome:'good',
+        title:'Kamu menutup celah sebelum sempat terbuka',
+        body:'Dengan kebijakan BYOD yang jelas dan enrolment ke MDM, data kerja tetap bisa dipisahkan dan dikelola tanpa mengorbankan privasi HP pribadimu.',
+        fact:'Kebijakan BYOD formal + Mobile Device Management memastikan data kerja bisa dipisah lewat container/profil kerja, dan tetap bisa di-remote-wipe kalau perangkat hilang atau kamu resign.'}
+    ], labKey:'byodshadow' }
+];
+const RESULT_TIERS = [
+  {min:0,max:0,title:'Pintu Selalu Terbuka',desc:'Semua celah kamu buka: jaringan open, Bluetooth nyala terus, app sembarangan, HP pribadi bercampur data kantor. Yuk pelan-pelan mulai tutup satu per satu.'},
+  {min:1,max:1,title:'Gembok Plastik',desc:'Ada satu lapis proteksi, tapi masih gampang dipatahkan kalau peretas niat sedikit lebih keras.'},
+  {min:2,max:2,title:'Kunci Tanggung',desc:'Separuh jalan sudah aman, separuh lagi masih jadi celah. Cek lagi babak mana yang masih terbuka.'},
+  {min:3,max:3,title:'Kunci Ganda',desc:'Hampir semua keputusanmu sudah aman. Tinggal satu celah lagi yang perlu ditutup.'},
+  {min:4,max:4,title:'Brankas Berlapis',desc:'Wireless, Bluetooth, Mobile, dan BYOD — semuanya kamu kunci rapat. Ini persis defense-in-depth: kurangi exposure, amankan identitas, dan perkuat endpoint di setiap lapisan.'}
+];
+
+/* ============ LAB ATTACK DATA (14 skenario, 4 kategori) ============ */
+const ATTACKS = [
+  { key:'sniff', cat:'wireless', catLabel:'Wireless', engine:'eng-sniff', icon:'👁️',
+    title:'Sniffing & Eavesdropping', oneLiner:'Penyadapan data yang lewat plain-text.',
+    captions:['Kamu kirim data lewat jaringan terbuka, tanpa enkripsi…','Penyerang di jaringan yang sama diam-diam menyadap traffic yang lewat…','Karena isinya plain-text, ia bisa membaca datamu apa adanya…','Password, pesan, bahkan sesi login bisa terekam begitu saja.'],
+    fact:'Sniffing/eavesdropping adalah penyadapan lalu lintas data yang tidak dienkripsi (plain text) — siapa pun di jaringan yang sama berpotensi membacanya.',
+    defense:['Selalu pakai jaringan dengan enkripsi WPA2/WPA2-Enterprise, bukan open network.','Tambahkan VPN saat harus pakai Wi-Fi publik.','Hindari transaksi sensitif (perbankan, login) di jaringan yang tidak kamu percaya.'],
+    impact:'Password akun, isi chat, sampai token sesi login bisa terekam seketika itu juga — korban biasanya baru sadar setelah akunnya dipakai orang lain.' },
+  { key:'rogueap', cat:'wireless', catLabel:'Wireless', engine:'eng-duplicate', icon:'📶',
+    title:'Rogue Access Point & Evil Twin', oneLiner:'AP palsu berpura-pura jadi jaringan asli.',
+    captions:['Ada dua sinyal Wi-Fi: satu resmi, satu tiruan dengan nama nyaris identik…','Sinyal tiruan ini sengaja dipancarkan lebih kuat supaya lebih menonjol…','Perangkatmu, atau kamu sendiri, akhirnya tersambung ke yang tiruan…','Semua trafficmu sekarang mengalir dulu lewat perangkat peretas sebelum diteruskan.'],
+    fact:'Rogue Access Point (termasuk varian "Evil Twin") adalah AP palsu yang dibuat peretas di luar kendali organisasi dengan SSID yang sama atau mirip, untuk menjebak pengguna dan mencuri data mereka.',
+    defense:['Cek nama jaringan resmi langsung ke pengelola tempat (kasir, admin kantor).','Curigai jaringan dengan nama nyaris sama atau sinyal "terlalu kuat" tanpa password.','Gunakan VPN sebagai lapisan pengaman tambahan.'],
+    impact:'Korban yang connect ke AP tiruan bisa diarahkan ke halaman login palsu (phishing) sekaligus disadap trafficnya — tidak ada tanda mencurigakan apa pun di layar.' },
+  { key:'mitm', cat:'wireless', catLabel:'Wireless', engine:'eng-sniff mitm', icon:'🔀',
+    title:'Man-in-the-Middle & MAC Spoofing', oneLiner:'Peretas menyelinap di tengah komunikasi.',
+    captions:['Komunikasimu seharusnya langsung menuju server tujuan…','Peretas menyisipkan diri di tengah jalur, menyamar dengan MAC address palsu…','Data yang tadinya langsung, kini singgah dulu di perangkatnya…','Ia bisa membaca, bahkan mengubah isi data sebelum diteruskan ke tujuan asli.'],
+    fact:'Selain sniffing, ancaman lain mencakup MAC spoofing, man-in-the-middle, dan miskonfigurasi AP — peretas menyisipkan diri di jalur komunikasi.',
+    defense:['Pakai enkripsi end-to-end untuk komunikasi penting.','Waspada sertifikat/koneksi yang tiba-tiba "tidak aman" di browser.','Audit & lakukan penetration testing jaringan secara berkala.'],
+    impact:'Data transaksi atau pesan bisa dibaca, bahkan diubah di tengah jalan sebelum sampai ke tujuan — pengirim maupun penerima sama-sama tidak sadar isinya sudah dimanipulasi.' },
+  { key:'wardrive', cat:'wireless', catLabel:'Wireless', engine:'eng-wardrive', icon:'🚗',
+    title:'War-Driving & War-Walking', oneLiner:'Berkeliling mencari Wi-Fi yang lupa dikunci.',
+    captions:['Peretas berkeliling membawa laptop atau antena pemindai kuat…','Ia perlahan memindai setiap sinyal Wi-Fi yang terdeteksi di sepanjang jalan…','Sebagian besar jaringan terkunci rapat, tapi satu di antaranya terbuka…','Jaringan yang lupa dikunci itu langsung jadi pintu masuknya.'],
+    fact:'War-Driving/War-Walking: peretas berjalan atau berkendara membawa laptop/antena kuat untuk mencari jaringan Wi-Fi terbuka yang rentan (alat seperti NetStumbler, NetSurveyor, WiFi Hopper).',
+    defense:['Ubah SSID default, jangan pakai nama perusahaan/rumah yang mudah dikenali.','Atur kekuatan sinyal agar tidak memancar keluar batas gedung.','Aktifkan MAC filtering dan enkripsi kuat di router.'],
+    impact:'Satu jaringan yang lupa dikunci di lingkungan kampus atau kantor bisa jadi pintu masuk ke semua perangkat lain yang terhubung ke jaringan yang sama.' },
+  { key:'jam', cat:'wireless', catLabel:'Wireless', engine:'eng-jam', icon:'📡',
+    title:'Jamming Signal (DoS)', oneLiner:'Sinyal pengganggu melumpuhkan Wi-Fi.',
+    captions:['Jaringan Wi-Fi awalnya berjalan normal, sinyal penuh…','Peretas menyalakan pemancar pengganggu di dekat area jaringan…','Gelombang pengganggu itu membanjiri frekuensi yang sama…','Koneksi terputus total untuk semua orang — inilah Denial of Service.'],
+    fact:'Jamming signals adalah penggunaan sinyal pengganggu untuk melumpuhkan jaringan Wi-Fi, menyebabkan Denial of Service.',
+    defense:['Gunakan Wireless Intrusion Prevention System (WIPS) untuk mendeteksi anomali.','Punya jalur komunikasi cadangan untuk situasi darurat.','Laporkan gangguan sinyal berulang ke tim IT/pengelola gedung.'],
+    impact:'Selama serangan berlangsung, semua orang di area itu kehilangan akses sekaligus — bisa mengganggu operasional, presentasi, bahkan sistem yang bergantung pada Wi-Fi untuk keamanan.' },
+  { key:'crack', cat:'wireless', catLabel:'Wireless', engine:'eng-crack', icon:'🔓',
+    title:'Membobol Enkripsi Lemah (WEP)', oneLiner:'Gembok tua yang bisa dipatahkan pelan-pelan.',
+    captions:['Jaringan ini masih memakai enkripsi WEP yang sudah tua…','Peretas menjalankan tool crack yang mengumpulkan paket demi paket…','Progress-nya terus berjalan, kunci enkripsi lambat laun terpecah…','Begitu kunci berhasil dipatahkan, seluruh trafficmu jadi terbuka lebar.'],
+    fact:'Analogi dari materi: WEP itu seperti gembok plastik yang gampang dipatahkan — bisa dibobol hanya dengan mengumpulkan cukup banyak paket data, jauh berbeda dari WPA2 yang berlapis seperti brankas.',
+    defense:['Migrasi total dari WEP ke WPA2/WPA3 — jangan pertahankan jaringan lama demi kompatibilitas.','Gunakan passphrase panjang dan acak, bukan kata yang mudah ditebak.','Ganti kunci Wi-Fi secara berkala, terutama di jaringan publik/kantor.'],
+    impact:'Dengan tool yang beredar bebas, kunci WEP bisa dipecahkan hanya dalam hitungan menit — begitu jebol, jaringan itu efektif sama saja dengan jaringan terbuka tanpa proteksi.' },
+
+  { key:'bthijack', cat:'bluetooth', catLabel:'Bluetooth', engine:'eng-bt', icon:'🎧',
+    title:'Bluejacking (Bluetooth Hijack)', oneLiner:'Perangkat yang "terlihat" jadi sasaran empuk.',
+    captions:['Perangkatmu dibiarkan discoverable & pairable di tempat umum…','Penyerang di sekitar memindai dan menemukan perangkatmu…','Ia mengirim permintaan sambungan atau pesan tak diminta…','Kalau diterima, dari situ ia bisa membanjiri perangkatmu dengan spam atau DoS.'],
+    fact:'Perangkat Bluetooth dalam mode ad-hoc/pairable rentan DoS, pesan spam tak diminta, hingga pencurian daftar kontak dan file.',
+    defense:['Matikan Bluetooth kalau tidak dipakai.','Set default ke non-discoverable & non-pairable.','Jangan terima permintaan pairing dari perangkat tak dikenal.'],
+    impact:'Perangkat bisa dibanjiri permintaan sambungan atau pesan sampah terus-menerus, membuatnya nyaris tidak bisa dipakai — semacam Denial of Service versi kantong saku.' },
+  { key:'btsnarf', cat:'bluetooth', catLabel:'Bluetooth', engine:'eng-bt', icon:'📂',
+    title:'Bluesnarfing', oneLiner:'Data ditarik keluar tanpa kamu sadari.',
+    captions:['Bluetooth-mu masih aktif dan terlihat oleh perangkat lain…','Penyerang menyambung secara diam-diam, tanpa notifikasi mencolok…','Ia mengakses daftar kontak, pesan, dan file yang tersimpan…','Semua itu tersalin keluar tanpa kamu sadari sedang terjadi.'],
+    fact:'Selain hijack yang terlihat, Bluetooth rentan pencurian data (bluesnarfing) — kontak dan file bisa diambil diam-diam lewat celah pairing yang longgar.',
+    defense:['Selalu update firmware/OS perangkat untuk menambal celah pairing lama.','Hapus paired device yang sudah tidak dikenali atau tidak dipakai lagi.','Batasi Bluetooth menyala hanya saat benar-benar dibutuhkan.'],
+    impact:'Kontak, foto, dan file bisa berpindah tangan tanpa satu pun notifikasi mencurigakan muncul di layar korban — pencuriannya benar-benar senyap.' },
+  { key:'btmalware', cat:'bluetooth', catLabel:'Bluetooth', engine:'eng-bt', icon:'🦠',
+    title:'Malicious Code lewat Bluetooth', oneLiner:'Kendali perangkat diambil alih dari jarak dekat.',
+    captions:['Penyerang menyambung ke perangkatmu yang masih terbuka…','Alih-alih sekadar mencuri file, ia menanamkan kode berbahaya…','Kode itu berjalan diam-diam di latar belakang…','Perangkatmu kini bisa dikendalikan tanpa sepengetahuanmu — panggilan, akses internet, semua bisa disalahgunakan.'],
+    fact:'Peretas bisa memasang malicious code lewat Bluetooth untuk mengambil alih kontrol perangkat, atau memakainya diam-diam untuk panggilan/akses internet.',
+    defense:['Non-discoverable & non-pairable secara default, pairing hanya di tempat aman.','Pasang antivirus/mobile security yang memindai aktivitas mencurigakan.','Restart & audit perangkat kalau baterai/paket data tiba-tiba boros tanpa sebab.'],
+    impact:'Begitu kode berbahaya tertanam, perangkat bisa dipakai diam-diam untuk panggilan, akses internet, atau jadi batu loncatan menyerang perangkat lain di jaringan yang sama.' },
+
+  { key:'infect', cat:'mobile', catLabel:'Mobile', engine:'eng-infect', icon:'📲',
+    title:'Aplikasi Berbahaya', oneLiner:'App "gratis" yang diam-diam menguras data.',
+    captions:['Kamu install app dari luar toko resmi karena katanya viral & gratis…','Progress instalasi berjalan seperti biasa, tidak ada yang mencurigakan…','Di baliknya, app itu ternyata membawa malicious code…','Kredensial login dan data kartu diam-diam dikirim keluar ke penyerang.'],
+    fact:'Aplikasi tidak resmi/game yang diunduh dapat melacak aktivitas pengguna, mencuri data, atau melakukan penipuan — "free apps" bisa membawa hidden cost berupa data exposure, tracking, theft, dan fraud.',
+    defense:['Unduh hanya dari authorized store (Play Store/App Store resmi).','Cek review, jumlah unduhan, dan izin (permission) yang diminta sebelum install.','Jangan root/jailbreak perangkat — itu mematikan proteksi bawaan OS.'],
+    impact:'Password, data kartu, dan kode OTP yang tercuri bisa langsung dipakai untuk membobol akun perbankan atau media sosial korban dalam hitungan jam.' },
+  { key:'steal', cat:'mobile', catLabel:'Mobile', engine:'eng-steal', icon:'🕵️',
+    title:'Perangkat Hilang / Dicuri', oneLiner:'Satu device, banyak identitas bocor sekaligus.',
+    captions:['HP-mu ketinggalan di suatu tempat, atau langsung dicuri…','Tanpa kunci layar yang kuat, siapa pun bisa langsung membukanya…','Ia menjelajah isi HP — email, chat, aplikasi perbankan…','Login ID, kredensial bank, sampai email pribadi ikut terekspos sekaligus.'],
+    fact:'Kehilangan/pencurian fisik berisiko membuka akses ke login ID, kredensial bank, dan email sekaligus — satu smartphone menjadi titik konsentrasi banyak data pribadi.',
+    defense:['Aktifkan PIN/kata sandi kunci layar yang kuat + enkripsi perangkat.','Nyalakan fitur Remote Wiping untuk hapus data jarak jauh.','Untuk perangkat kantor, terapkan Mobile Device Management (MDM).'],
+    impact:'Satu perangkat yang hilang bisa membuka akses ke puluhan akun sekaligus lewat sesi yang masih login — email, e-wallet, media sosial, semuanya dalam satu genggaman.' },
+  { key:'vuln', cat:'mobile', catLabel:'Mobile', engine:'eng-vuln', icon:'🐛',
+    title:'OS Usang & Tanpa Antivirus', oneLiner:'Celah lama yang dibiarkan terbuka bertahun-tahun.',
+    captions:['Update sistem terus kamu tunda karena "nanti aja"…','Celah keamanan lama di versi OS-mu tetap terbuka, tak pernah ditambal…','Tanpa antivirus/mobile security, aktivitas mencurigakan lolos tanpa terdeteksi…','Malware menumpang lewat celah itu dan menetap diam-diam di perangkatmu.'],
+    fact:'Risiko mobile bukan cuma soal kehilangan fisik perangkat — OS yang tidak ter-update dan absennya antivirus sama-sama jadi titik masuk serangan yang mudah dieksploitasi.',
+    defense:['Nyalakan update otomatis untuk OS dan semua aplikasi.','Pasang mobile security/antivirus dari vendor tepercaya.','Uninstall aplikasi lama yang sudah tidak didukung/diperbarui lagi.'],
+    impact:'Malware yang menumpang lewat celah lama bisa bertahan berbulan-bulan tanpa terdeteksi, terus mengirim data keluar diam-diam di latar belakang.' },
+
+  { key:'byodshadow', cat:'byod', catLabel:'BYOD', engine:'eng-byod', icon:'🧳',
+    title:'Shadow IT: Perangkat Pribadi Tanpa Pengawasan', oneLiner:'HP pribadi masuk ke sistem kantor tanpa MDM.',
+    captions:['Kamu pakai HP pribadi untuk buka email dan sistem kantor…','Karena ini device pribadi, tim IT tidak punya visibilitas atau kendali atasnya…','Tidak ada MDM, tidak ada kebijakan keamanan yang dipaksakan ke perangkat ini…','Data pribadi dan data kantor bercampur di satu perangkat yang sama sekali tak terawasi.'],
+    fact:'BYOD (Bring Your Own Device) membuka celah "shadow IT" — perangkat pribadi mengakses sumber daya organisasi tanpa pengawasan atau kebijakan keamanan terpusat dari tim IT.',
+    defense:['Terapkan kebijakan BYOD formal sebelum perangkat pribadi diizinkan akses sistem kerja.','Wajibkan enrolment ke Mobile Device Management (MDM) untuk perangkat yang dipakai kerja.','Pisahkan data kerja dan pribadi lewat container/profile kerja terpisah.'],
+    impact:'Kalau perangkat pribadi itu kena malware, malware itu punya jalur langsung ke email dan sistem kantor — tanpa satu pun lapisan keamanan korporat di antaranya.' },
+  { key:'byodleak', cat:'byod', catLabel:'BYOD', engine:'eng-steal', icon:'🏢',
+    title:'Kebocoran Data Saat Perangkat BYOD Hilang', oneLiner:'Satu HP hilang, data pribadi & kantor hilang bersamaan.',
+    captions:['HP pribadi yang juga dipakai untuk kerja itu hilang…','Di dalamnya ada email kantor, dokumen internal, dan chat kerja…','Karena tidak ada Remote Wiping terpusat, tim IT tak bisa menghapusnya dari jauh…','Data pribadi dan data perusahaan sama-sama terekspos ke siapa pun yang menemukannya.'],
+    fact:'Karena BYOD mencampur data pribadi dan korporat dalam satu perangkat, kehilangan device sekaligus berarti kebocoran ganda — identitas pribadi sekaligus data organisasi.',
+    defense:['Wajibkan kunci layar kuat + enkripsi penuh untuk semua perangkat BYOD yang mengakses data kerja.','Sediakan kemampuan Remote Wipe khusus data kerja (tanpa menghapus data pribadi) lewat MDM.','Latih karyawan untuk segera melapor begitu perangkat hilang, sebelum data diakses pihak lain.'],
+    impact:'Perusahaan bisa kena pelanggaran data (data breach) resmi hanya karena satu HP pribadi karyawan hilang — dengan konsekuensi hukum dan reputasi yang jauh lebih besar dari nilai HP itu sendiri.' },
+  { key:'byodapp', cat:'byod', catLabel:'BYOD', engine:'eng-byod', icon:'📤',
+    title:'Aplikasi Pribadi Membocorkan Data Kerja', oneLiner:'Backup otomatis & chat pribadi ikut menyeret dokumen kantor.',
+    captions:['Kamu screenshot dokumen kerja, lalu kirim lewat WhatsApp pribadi biar cepat…','Galeri HP-mu otomatis backup semua foto ke cloud pribadi, termasuk screenshot itu…','Dokumen kerja kini tersimpan di layanan yang sama sekali tidak diawasi tim IT…','Kalau akun cloud pribadimu bocor, dokumen kantor ikut bocor bersamanya.'],
+    fact:'Karena BYOD tidak memisahkan aplikasi pribadi dan kerja, fitur sehari-hari seperti auto-backup foto atau berbagi file lewat aplikasi chat pribadi bisa diam-diam menyalin data kantor keluar dari kendali organisasi.',
+    defense:['Pisahkan aplikasi kerja lewat container/profil kerja yang auto-backup-nya bisa dimatikan terpisah.','Larang berbagi dokumen kerja lewat aplikasi chat pribadi — sediakan kanal resmi.','Gunakan aplikasi kerja yang mendukung kebijakan Data Loss Prevention (DLP).'],
+    impact:'Dokumen internal bisa berakhir tersimpan permanen di akun cloud pribadi karyawan — di luar kendali dan tak pernah terhapus meski karyawan sudah resign.' },
+  { key:'byodwifi', cat:'byod', catLabel:'BYOD', engine:'eng-sniff', icon:'🏠',
+    title:'Akses Kantor Lewat Jaringan yang Tak Aman', oneLiner:'BYOD tanpa VPN, disambungkan ke Wi-Fi sembarangan.',
+    captions:['Dari rumah atau kafe, kamu buka email dan sistem kantor lewat HP pribadi…','Karena bukan perangkat kantor, tidak ada VPN wajib yang otomatis menyala…','Jaringan Wi-Fi yang kamu pakai ternyata tidak terenkripsi dengan baik…','Kredensial akun kantor dan data internal berpotensi disadap di jalan.'],
+    fact:'Perangkat BYOD sering berpindah-pindah jaringan yang tidak pernah diperiksa keamanannya oleh tim IT — kombinasi ini melipatgandakan risiko sniffing dan rogue AP dari materi Wireless di atas.',
+    defense:['Wajibkan VPN korporat untuk setiap akses ke sistem kerja dari luar kantor.','Larang akses ke sistem sensitif dari jaringan publik tanpa VPN aktif.','Edukasi karyawan mengenali jaringan aman vs jaringan mencurigakan.'],
+    impact:'Satu sesi login yang tersadap dari jaringan rumah atau kafe bisa membuka jalan langsung ke sistem internal perusahaan, tanpa perlu membobol apa pun di sisi kantor.' },
+  { key:'byodoffboard', cat:'byod', catLabel:'BYOD', engine:'eng-vuln', icon:'🚪',
+    title:'Data Kantor Masih Menempel Saat Karyawan Resign', oneLiner:'Akses tak pernah dicabut dari HP pribadi mantan karyawan.',
+    captions:['Seorang karyawan resign dan berhenti bekerja…','Karena email & aplikasi kerja terpasang di HP pribadinya, bukan perangkat kantor…','Tim IT tidak punya cara mudah mencabut akses dari perangkat yang bukan miliknya…','Berbulan-bulan kemudian, akses itu masih aktif dan bisa dipakai siapa pun yang pegang HP itu.'],
+    fact:'BYOD menciptakan celah di proses offboarding — kalau akses kerja tidak dikelola lewat sistem terpusat, IT tidak bisa memastikan data organisasi benar-benar terputus dari perangkat pribadi mantan karyawan.',
+    defense:['Wajibkan SOP pencabutan akses & Remote Wipe data kerja saat proses offboarding.','Kelola aplikasi kerja lewat MDM/container yang bisa di-deprovision dari jarak jauh.','Audit daftar perangkat yang masih terhubung ke sistem secara berkala.'],
+    impact:'Mantan karyawan — atau siapa pun yang memegang HP itu — bisa saja masih bisa membuka email dan sistem kantor lama setelah resign, tanpa siapa pun menyadarinya.' }
+];
+
+/* ============ KAMUS ISTILAH TEKNIS ============ */
+const GLOSSARY = [
+  {match:'wpa2', term:'WPA2 / WPA3', def:'Standar enkripsi Wi-Fi modern yang mengacak datamu supaya tidak bisa dibaca sembarang orang di jaringan yang sama.'},
+  {match:'wep', term:'WEP', def:'Standar enkripsi Wi-Fi lama, pendahulu WPA — jauh lebih lemah dan bisa dibobol hanya dengan mengumpulkan cukup banyak paket data.'},
+  {match:'vpn', term:'VPN', def:'Virtual Private Network — "terowongan" terenkripsi yang menyembunyikan trafficmu dari jaringan yang kamu lewati.'},
+  {match:'mac ', term:'MAC Address / MAC Spoofing', def:'MAC Address adalah alamat unik tiap perangkat jaringan. MAC Spoofing berarti peretas memalsukan alamat itu supaya perangkatnya terlihat sah.'},
+  {match:'man-in-the-middle', term:'Man-in-the-Middle (MITM)', def:'Serangan di mana peretas menyisipkan diri di tengah jalur komunikasi dua pihak, lalu membaca atau mengubah data yang lewat.'},
+  {match:'denial of service', term:'Denial of Service (DoS)', def:'Serangan yang membuat sebuah layanan atau jaringan tidak bisa diakses, biasanya dengan membanjirinya dengan traffic atau sinyal pengganggu.'},
+  {match:'enkripsi', term:'Enkripsi', def:'Proses mengubah data menjadi kode acak, supaya hanya pihak yang punya kunci yang bisa membacanya.'},
+  {match:'mobile device management', term:'Mobile Device Management (MDM)', def:'Sistem yang dipakai tim IT untuk mengelola, mengamankan, dan menghapus data dari jarak jauh pada perangkat yang terhubung ke sumber daya perusahaan.'},
+  {match:'shadow it', term:'Shadow IT', def:'Penggunaan perangkat, aplikasi, atau layanan di luar pengawasan dan kebijakan resmi tim IT organisasi.'},
+  {match:'container', term:'Container / Profil Kerja', def:'"Ruang" terpisah di dalam satu perangkat yang memisahkan data dan aplikasi kerja dari data pribadi, supaya bisa dikelola tanpa menyentuh sisi pribadi.'},
+  {match:'remote wip', term:'Remote Wipe', def:'Kemampuan menghapus data dari jarak jauh lewat sistem terpusat — biasanya dipakai saat perangkat hilang, dicuri, atau penggunanya keluar dari organisasi.'},
+  {match:'malicious code', term:'Malicious Code / Malware', def:'Program atau kode yang sengaja dibuat untuk merusak, mencuri data, atau mengambil alih kendali sebuah perangkat.'},
+  {match:'antivirus', term:'Antivirus / Mobile Security', def:'Aplikasi yang memindai dan mendeteksi program berbahaya sebelum atau saat ia berjalan di perangkatmu.'},
+  {match:'root/jailbreak', term:'Root / Jailbreak', def:'Proses membuka akses penuh ke sistem operasi perangkat — sering kali mematikan lapisan proteksi bawaan yang seharusnya melindungimu.'},
+  {match:'otp', term:'OTP (One-Time Password)', def:'Kode sekali pakai untuk memverifikasi identitasmu, biasanya dikirim lewat SMS atau aplikasi otentikasi.'},
+  {match:'wireless intrusion prevention', term:'WIPS', def:'Sistem yang memantau jaringan Wi-Fi untuk mendeteksi dan merespons aktivitas mencurigakan seperti rogue AP atau jamming.'},
+  {match:'firmware', term:'Firmware', def:'Perangkat lunak dasar yang tertanam di sebuah perangkat untuk menjalankan fungsi intinya — perlu di-update seperti aplikasi biasa.'},
+  {match:'permission', term:'Permission (Izin Aplikasi)', def:'Akses yang diminta sebuah aplikasi ke bagian tertentu perangkatmu, seperti kontak, kamera, atau lokasi.'},
+  {match:'pelanggaran data', term:'Data Breach', def:'Insiden ketika data sensitif atau rahasia diakses, dicuri, atau bocor ke pihak yang tidak berwenang.'},
+  {match:'passphrase', term:'Passphrase', def:'Kata sandi jaringan Wi-Fi — makin panjang dan acak, makin sulit ditebak atau dibobol.'},
+  {match:'ssid', term:'SSID', def:'Nama yang muncul saat kamu mencari jaringan Wi-Fi di HP atau laptop.'},
+  {match:'evil twin', term:'Evil Twin', def:'Varian Rogue Access Point yang meniru nama jaringan asli persis, biasanya dengan sinyal dibuat lebih kuat supaya korban memilihnya.'},
+  {match:'end-to-end', term:'End-to-End Encryption', def:'Enkripsi yang membuat data hanya bisa dibaca oleh pengirim dan penerima — bahkan penyedia layanan di tengahnya tidak bisa membacanya.'},
+  {match:'data loss prevention', term:'Data Loss Prevention (DLP)', def:'Kebijakan atau alat yang mencegah data sensitif organisasi berpindah ke tempat yang tidak seharusnya, misalnya ke akun pribadi.'},
+  {match:'deprovision', term:'Deprovisioning', def:'Proses mencabut akses seorang pengguna atau perangkat dari sistem organisasi, biasanya dilakukan saat offboarding.'}
+];
+function glossaryFor(attack){
+  const text = (attack.title+' '+attack.captions.join(' ')+' '+attack.fact+' '+attack.impact+' '+attack.defense.join(' ')).toLowerCase();
+  const out = [];
+  GLOSSARY.forEach(g=>{
+    if(out.length>=6) return;
+    if(text.indexOf(g.match)!==-1) out.push(g);
+  });
+  return out;
+}
+
+
+/* ============ CLOUD DATA CONFIG ============ */
+// Isi dua nilai ini dari Supabase Dashboard > Project Settings > API.
+// Gunakan Publishable/anon key saja — JANGAN pernah taruh service_role key di browser.
+const SUPABASE_URL = 'https://vrdvlejznrxgejncczel.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_G19Ng5UcIGy6TKUyMT6gow_1n4zolu4';
+const SUPABASE_READY = SUPABASE_URL.startsWith('https://') && !SUPABASE_URL.includes('PASTE_') && !SUPABASE_PUBLISHABLE_KEY.includes('PASTE_');
+const sbClient = SUPABASE_READY ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY) : null;
+
+let state = { chIndex:0, answers:[], score:0 };
+let labState = { cat:'all', currentKey:null };
+let capTimers = [];
+const ENGINE_MS = 6400;
+const sessionId = 'p_' + Math.random().toString(36).slice(2,10);
+const app = document.getElementById('app');
+
+/* ============ SHARED UI ============ */
+function progressBar(){
+  return '<div class="progress">' + CHAPTERS.map((c,i)=>{
+    let cls = i < state.chIndex ? 'seg done' : (i===state.chIndex ? 'seg now' : 'seg');
+    return '<div class="'+cls+'"></div>';
+  }).join('') + '</div>';
+}
+function vaultDial(score, cracked){
+  const angle = -70 + (score/CHAPTERS.length)*140;
+  const wrapClass = cracked ? 'ajar' : '';
+  return '<div class="vault-wrap '+wrapClass+'"><div class="vault-dial"><div class="vault-crack"></div><div class="vault-hub"></div>'+
+    '<div class="vault-needle" id="vaultNeedle" style="transform:translateX(-50%) rotate('+angle+'deg)"></div></div></div>';
+}
+
+/* ============ HUB / INTRO ============ */
+function renderIntro(){
+  app.innerHTML =
+  '<div class="screen active center">'+
+    vaultDial(0,false)+
+    '<div class="eyebrow">Chapter 16 · Wireless / Bluetooth / Mobile / BYOD Security</div>'+
+    '<h1 class="headline">Pintu Tak<br>Terkunci</h1>'+
+    '<p class="sub">Pilih cara menjelajah materi keamanan digital ini.</p>'+
+    '<div class="max-w">'+
+      '<button class="mode-card" id="goStory"><div class="mtag">Mode Cerita · ~90 detik</div><h3>Simulasi Keputusan →</h3><p>Ambil 4 keputusan berturut-turut, lihat konsekuensinya, dan dapat skor kerentanan pribadi. Hasilmu masuk ke dashboard kelas.</p></button>'+
+      '<button class="mode-card" id="goLab"><div class="mtag">Lab Serangan · 17 skenario, bisa diulang</div><h3>Jelajahi Simulasi Serangan →</h3><p>Wireless, Bluetooth, Mobile, sampai BYOD lengkap — tiap skenario punya animasi step-by-step dan kamus istilah teknis, bisa kamu putar ulang sepuasnya.</p></button>'+
+    '</div>'+
+    '<div class="footer-note">Chapter 16 · Wireless, Bluetooth, Mobile &amp; BYOD Security</div>'+
+  '</div>';
+  document.getElementById('goStory').onclick = ()=>{ state = { chIndex:0, answers:[], score:0 }; renderChapter(); };
+  document.getElementById('goLab').onclick = ()=>{ renderLabHome(); };
+  requestAnimationFrame(()=>{ const n=document.getElementById('vaultNeedle'); if(n) n.style.transform='translateX(-50%) rotate(-70deg)'; });
+}
+
+/* ============ STORY MODE ============ */
+function renderChapter(){
+  const ch = CHAPTERS[state.chIndex];
+  app.innerHTML =
+  '<div class="screen active">'+
+    progressBar()+
+    '<div class="badge"><span class="dot"></span>'+ch.label+'</div>'+
+    '<div class="max-w">'+
+      '<div class="case-file"><span class="scene">'+ch.scene+'</span><p>'+ch.context+'</p></div>'+
+      '<div id="choices">'+ch.choices.map((c,i)=>
+        '<button class="btn choice" style="margin-bottom:10px;" data-id="'+c.id+'"><span class="k mono">'+String.fromCharCode(65+i)+'</span><span class="t">'+c.label+'</span></button>'
+      ).join('')+'</div>'+
+      '<div id="consequenceZone"></div>'+
+    '</div>'+
+  '</div>';
+  document.querySelectorAll('#choices .choice').forEach(btn=>{
+    btn.onclick = ()=>{
+      const choiceId = btn.getAttribute('data-id');
+      const choice = ch.choices.find(c=>c.id===choiceId);
+      document.querySelectorAll('#choices .choice').forEach(b=>b.disabled=true);
+      showConsequence(choice, ch);
+    };
+  });
+}
+function showConsequence(choice, ch){
+  const good = choice.outcome === 'good';
+  if(good) state.score++;
+  state.answers.push({ chapter: ch.key, outcome: choice.outcome });
+  const zone = document.getElementById('consequenceZone');
+  zone.innerHTML =
+    '<div class="consequence '+(good?'good':'bad')+'">'+
+      '<div class="tag mono">'+(good?'✓ Aman':'⚠ Celah Terbuka')+'</div>'+
+      '<h3>'+choice.title+'</h3><p>'+choice.body+'</p>'+
+      '<div class="fact"><b>Kenapa:</b> '+choice.fact+'</div>'+
+    '</div>'+
+    '<button class="btn btn-primary" id="nextBtn">'+(state.chIndex < CHAPTERS.length-1 ? 'Lanjut →' : 'Lihat Hasil →')+'</button>';
+  document.getElementById('nextBtn').onclick = ()=>{
+    if(state.chIndex < CHAPTERS.length-1){ state.chIndex++; renderChapter(); }
+    else{ renderResult(); }
+  };
+}
+async function renderResult(){
+  const maxScore = CHAPTERS.length;
+  const tier = RESULT_TIERS.find(t=>state.score>=t.min && state.score<=t.max);
+  const cracked = state.score < maxScore;
+  app.innerHTML =
+  '<div class="screen active center">'+
+    vaultDial(state.score, cracked)+
+    '<div class="eyebrow">Laporan Kerentanan</div>'+
+    '<h1 class="headline">'+tier.title+'</h1>'+
+    '<div class="stamp"><span class="n mono">'+state.score+'/'+maxScore+'</span></div>'+
+    '<p class="sub">'+tier.desc+'</p>'+
+    '<div class="max-w">'+
+      '<div class="result-grid">'+state.answers.map((a,i)=>
+        '<div class="result-row"><span class="label">'+CHAPTERS[i].label.split('—')[1].trim()+'</span>'+
+        '<div style="display:flex;align-items:center;gap:8px;">'+
+          '<span class="pill '+(a.outcome==='good'?'good':'bad')+'">'+(a.outcome==='good'?'Terkunci':'Terbuka')+'</span>'+
+          '<button class="lab-link" data-labkey="'+CHAPTERS[i].labKey+'" title="Pelajari lebih dalam di Lab">🔬</button>'+
+        '</div></div>'
+      ).join('')+'</div>'+
+      '<div class="class-teaser mono" id="classTeaser">mengirim hasil ke dashboard kelas…</div>'+
+      '<button class="btn btn-primary" id="toLabBtn" style="margin-top:18px;">Jelajahi Semua Simulasi di Lab →</button>'+
+      '<button class="btn btn-ghost" id="restartBtn" style="margin-top:10px;">Ulangi Simulasi</button>'+
+    '</div>'+
+  '</div>';
+  document.getElementById('restartBtn').onclick = ()=>{ state = { chIndex:0, answers:[], score:0 }; renderIntro(); };
+  document.getElementById('toLabBtn').onclick = ()=>{ renderLabHome(); };
+  document.querySelectorAll('.lab-link').forEach(b=>{ b.onclick=()=>{ labState.currentKey = b.getAttribute('data-labkey'); renderAttackDetail(); }; });
+  try{
+    if(!sbClient) throw new Error('Supabase belum dikonfigurasi');
+    const { error } = await sbClient.from('quiz_responses').insert({
+      session_id: sessionId,
+      score: state.score,
+      max_score: maxScore,
+      answers: state.answers
+    });
+    if(error) throw error;
+    const agg = await computeAggregate();
+    document.getElementById('classTeaser').innerHTML = '<b>'+agg.count+'</b> orang sudah selesai · rata-rata skor <b>'+agg.avg+'</b>/'+maxScore;
+  }catch(e){
+    console.error('Gagal menyimpan hasil:', e);
+    const el = document.getElementById('classTeaser');
+    if(el) el.textContent = 'Hasil lokal selesai. Dashboard kelas belum terhubung.';
+  }
+}
+
+/* ============ LAB MODE ============ */
+function renderLabHome(){
+  const cats = [{k:'all',l:'Semua'},{k:'wireless',l:'Wireless'},{k:'bluetooth',l:'Bluetooth'},{k:'mobile',l:'Mobile'},{k:'byod',l:'BYOD'}];
+  const list = ATTACKS.filter(a => labState.cat==='all' || a.cat===labState.cat);
+  app.innerHTML =
+  '<div class="screen active">'+
+    '<div class="lab-header"><button class="back-btn" id="backHub">←</button><div><div class="eyebrow" style="margin-bottom:2px;">Lab Serangan</div><h2 style="margin:0;font-size:20px;">Jelajahi & Ulangi</h2></div></div>'+
+    '<div class="cat-tabs">'+cats.map(c=>'<div class="cat-tab '+(labState.cat===c.k?'active':'')+'" data-cat="'+c.k+'">'+c.l+'</div>').join('')+'</div>'+
+    '<div class="attack-grid">'+list.map(a=>
+      '<button class="attack-card" data-key="'+a.key+'"><div class="icon">'+a.icon+'</div><div class="txt"><span class="cattag">'+a.catLabel+'</span><h4>'+a.title+'</h4><p>'+a.oneLiner+'</p></div></button>'
+    ).join('')+'</div>'+
+    '<div class="footer-note">Ketuk simulasi mana pun — bisa diputar ulang tanpa batas.</div>'+
+  '</div>';
+  document.getElementById('backHub').onclick = renderIntro;
+  document.querySelectorAll('.cat-tab').forEach(t=>{ t.onclick=()=>{ labState.cat = t.getAttribute('data-cat'); renderLabHome(); }; });
+  document.querySelectorAll('.attack-card').forEach(c=>{ c.onclick=()=>{ labState.currentKey = c.getAttribute('data-key'); renderAttackDetail(); }; });
+}
+
+function attackStageHTML(attack){
+  const e = attack.engine;
+  if(e.indexOf('eng-sniff')===0){
+    return '<div class="attack-stage '+e+'">'+
+      '<div class="actor you">🧑</div><div class="lbl" style="left:4%;top:62%;">Kamu</div>'+
+      '<div class="line theline"></div>'+
+      '<div class="actor srv">🖥️</div><div class="lbl" style="left:80%;top:62%;">Tujuan</div>'+
+      '<div class="actor attacker">🕵️</div>'+
+      '<div class="flyicon packet">📨</div>'+
+      '<div class="flyicon clone">📄</div>'+
+    '</div>';
+  }
+  if(e==='eng-duplicate'){
+    return '<div class="attack-stage eng-duplicate">'+
+      '<div class="actor apReal">📶</div><div class="lbl" style="left:12%;top:16%;">Resmi</div>'+
+      '<div class="actor apFake">📶</div><div class="lbl" style="left:12%;top:62%;color:var(--alert);">Tiruan</div>'+
+      '<div class="actor you">🧑</div><div class="lbl" style="left:78%;top:42%;">Kamu</div>'+
+      '<div class="line lineReal"></div><div class="line lineFake"></div>'+
+      '<div class="flyicon">🔓</div>'+
+    '</div>';
+  }
+  if(e==='eng-wardrive'){
+    return '<div class="attack-stage eng-wardrive">'+
+      '<div class="actor car">🚗</div>'+
+      '<div class="actor house house1">🏠<span class="lock">🔒</span></div>'+
+      '<div class="actor house house2">🏠<span class="lock">🔓</span><span class="warn">⚠️</span></div>'+
+      '<div class="actor house house3">🏠<span class="lock">🔒</span></div>'+
+    '</div>';
+  }
+  if(e==='eng-jam'){
+    return '<div class="attack-stage eng-jam">'+
+      '<div class="actor wifi">📶</div><div class="xmark">🚫</div>'+
+      '<div class="barrow"><div class="bar" style="height:12px;"></div><div class="bar" style="height:22px;"></div><div class="bar" style="height:32px;"></div></div>'+
+      '<div class="actor attacker">📡</div>'+
+      '<div class="ring ring1"></div><div class="ring ring2"></div><div class="ring ring3"></div>'+
+    '</div>';
+  }
+  if(e==='eng-crack'){
+    return '<div class="attack-stage eng-crack">'+
+      '<div class="actor lock">🔒</div><div class="actor lockOpen">🔓</div>'+
+      '<div class="actor attacker">💻</div><div class="lbl" style="left:78%;top:58%;">Crack Tool</div>'+
+      '<div class="track"><div class="fill"></div></div>'+
+    '</div>';
+  }
+  if(e==='eng-bt'){
+    return '<div class="attack-stage eng-bt">'+
+      '<div class="actor device">🎧</div><div class="lbl" style="left:8%;top:56%;">Perangkatmu</div>'+
+      '<div class="ring"></div>'+
+      '<div class="conn"></div>'+
+      '<div class="actor attacker">🕵️</div><div class="lbl" style="left:76%;top:56%;">Penyerang</div>'+
+      '<div class="flyicon fly1">📄</div><div class="flyicon fly2">👤</div>'+
+    '</div>';
+  }
+  if(e==='eng-infect'){
+    return '<div class="attack-stage eng-infect">'+
+      '<div class="actor app">📥</div><div class="actor skull">💀</div>'+
+      '<div class="track"><div class="fill"></div></div>'+
+      '<div class="actor phone">📱</div>'+
+      '<div class="actor attacker">🕵️</div>'+
+      '<div class="flyicon fly1">🔑</div><div class="flyicon fly2">💳</div>'+
+    '</div>';
+  }
+  if(e==='eng-steal'){
+    return '<div class="attack-stage eng-steal">'+
+      '<div class="actor phone">📱</div>'+
+      '<div class="actor crack">🔓</div>'+
+      '<div class="actor hand">🖐️</div>'+
+      '<div class="flyicon fly1">🔑</div><div class="flyicon fly2">💳</div>'+
+    '</div>';
+  }
+  if(e==='eng-vuln'){
+    return '<div class="attack-stage eng-vuln">'+
+      '<div class="actor shield">🛡️</div><div class="actor crackShield">💢</div>'+
+      '<div class="actor phone">📱</div>'+
+      '<div class="actor bug1">🐛</div><div class="actor bug2">🐛</div><div class="actor bug3">🐛</div>'+
+    '</div>';
+  }
+  if(e==='eng-byod'){
+    return '<div class="attack-stage eng-byod">'+
+      '<div class="actor device">📱</div><div class="lbl" style="left:8%;top:56%;">HP Pribadi</div>'+
+      '<div class="line"></div>'+
+      '<div class="actor noshield">🚫🛡️</div>'+
+      '<div class="actor company">🏢</div><div class="lbl" style="left:78%;top:56%;">Sistem Kantor</div>'+
+      '<div class="flyicon fly1">👤</div><div class="flyicon fly2">📁</div>'+
+    '</div>';
+  }
+  return '';
+}
+
+function renderAttackDetail(){
+  const attack = ATTACKS.find(a=>a.key===labState.currentKey);
+  const idx = ATTACKS.findIndex(a=>a.key===labState.currentKey);
+  const terms = glossaryFor(attack);
+  const glossaryHTML = terms.length
+    ? '<div class="info-block"><div class="tag" style="color:var(--paper-dim);">🔤 Istilah teknis di sini</div>'+
+        terms.map(t=>'<div class="gterm"><b>'+t.term+'</b><span>'+t.def+'</span></div>').join('')+
+      '</div>'
+    : '';
+  app.innerHTML =
+  '<div class="screen active">'+
+    '<div class="lab-header"><button class="back-btn" id="backLab">←</button><div><span class="cattag" style="display:block;">'+attack.catLabel+'</span><h2 style="margin:0;font-size:20px;">'+attack.title+'</h2></div></div>'+
+    attackStageHTML(attack)+
+    '<div class="caption-dots" id="capDots">'+attack.captions.map(()=>'<span></span>').join('')+'</div>'+
+    '<div class="caption-box mono" id="capBox">Ketuk putar untuk mulai.</div>'+
+    '<div class="attack-nav">'+
+      '<button class="btn btn-primary" id="playBtn" style="flex:1;">▶ Jalankan Simulasi</button>'+
+    '</div>'+
+    '<div class="max-w" style="margin-top:22px;">'+
+      '<div class="info-block"><div class="tag">📖 Bagaimana ini bekerja</div><p>'+attack.fact+'</p></div>'+
+      '<div class="info-block"><div class="tag" style="color:var(--alert);">💥 Dampak nyata kalau kena</div><p>'+attack.impact+'</p></div>'+
+      '<div class="info-block"><div class="tag" style="color:var(--safe);">🛡️ Cara bertahan</div><ul>'+attack.defense.map(d=>'<li>'+d+'</li>').join('')+'</ul></div>'+
+      glossaryHTML+
+    '</div>'+
+    '<div class="attack-nav" style="max-width:340px;">'+
+      '<button class="btn btn-ghost" id="prevAtk" style="flex:1;">← Sebelumnya</button>'+
+      '<button class="btn btn-ghost" id="nextAtk" style="flex:1;">Berikutnya →</button>'+
+    '</div>'+
+  '</div>';
+
+  document.getElementById('backLab').onclick = ()=>{ clearCaptionTimers(); renderLabHome(); };
+  document.getElementById('playBtn').onclick = ()=> playAttack(attack);
+  document.getElementById('prevAtk').onclick = ()=>{ clearCaptionTimers(); labState.currentKey = ATTACKS[(idx-1+ATTACKS.length)%ATTACKS.length].key; renderAttackDetail(); };
+  document.getElementById('nextAtk').onclick = ()=>{ clearCaptionTimers(); labState.currentKey = ATTACKS[(idx+1)%ATTACKS.length].key; renderAttackDetail(); };
+}
+
+function clearCaptionTimers(){ capTimers.forEach(t=>clearTimeout(t)); capTimers = []; }
+
+function playAttack(attack){
+  clearCaptionTimers();
+  const stage = document.querySelector('.attack-stage');
+  if(!stage) return;
+  stage.classList.remove('play');
+  void stage.offsetWidth; // force reflow to restart CSS animations
+  stage.classList.add('play');
+
+  const dots = document.querySelectorAll('#capDots span');
+  const capBox = document.getElementById('capBox');
+  const n = attack.captions.length;
+  attack.captions.forEach((text,i)=>{
+    const t = Math.round(i*(ENGINE_MS/n));
+    capTimers.push(setTimeout(()=>{
+      capBox.textContent = text;
+      dots.forEach((d,di)=> d.classList.toggle('on', di===i));
+    }, t));
+  });
+  const playBtn = document.getElementById('playBtn');
+  if(playBtn) playBtn.innerHTML = '▶ Sedang berjalan…';
+  capTimers.push(setTimeout(()=>{ if(playBtn) playBtn.innerHTML = '↻ Putar Ulang'; }, ENGINE_MS));
+}
+
+/* ============ HOST / PRESENTER MODE ============ */
+async function computeAggregate(){
+  if(!sbClient) return { count:0, avg:'0.0', byChapter:Object.fromEntries(CHAPTERS.map(c=>[c.key,{good:0,total:0}])) };
+  const { data, error } = await sbClient.rpc('get_dashboard_stats');
+  if(error) throw error;
+  const stats = data || {};
+  return {
+    count: Number(stats.count || 0),
+    avg: Number(stats.avg || 0).toFixed(1),
+    byChapter: stats.byChapter || Object.fromEntries(CHAPTERS.map(c=>[c.key,{good:0,total:0}]))
+  };
+}
+let hostInterval = null;
+function renderHost(){
+  app.innerHTML =
+  '<div class="screen active" style="justify-content:flex-start;padding-top:48px;">'+
+    '<div class="host-header"><div><div class="eyebrow"><span class="live-dot"></span>Dashboard Presenter — Live</div><h2 style="margin:0;font-size:26px;">Pintu Tak Terkunci</h2></div>'+
+      '<button class="btn btn-ghost mono" id="exitHost">← Keluar Mode Presenter</button></div>'+
+    '<div class="host-grid">'+
+      '<div class="qr-card"><div id="qrcode"></div><div class="cap">SCAN UNTUK IKUT SIMULASI<br>'+location.href.split('?')[0]+'</div></div>'+
+      '<div class="stat-card"><h4>Peserta Selesai (Mode Cerita)</h4><div class="stat-num" id="participantCount">0</div>'+
+        '<h4 style="margin-top:18px;">Rata-rata Skor</h4><div class="stat-num" id="avgScore">0.0<span style="font-size:20px;color:var(--paper-dim);">/'+CHAPTERS.length+'</span></div></div>'+
+    '</div>'+
+    '<div class="host-grid" style="margin-top:18px;"><div class="stat-card" style="grid-column:1/-1;">'+
+      '<h4 style="margin-bottom:14px;">Persentase Pilihan Aman per Bab</h4><div id="chapterStats"></div>'+
+    '</div></div>'+
+  '</div>';
+  new QRCode(document.getElementById('qrcode'), { text: location.href.split('?')[0], width:148, height:148, colorDark:'#0A0E1A', colorLight:'#F6F2E7' });
+  document.getElementById('exitHost').onclick = ()=>{ if(hostInterval) clearInterval(hostInterval); renderIntro(); };
+  refreshHostStats();
+  hostInterval = setInterval(refreshHostStats, 4000);
+  if(!SUPABASE_READY){
+    const note = document.createElement('div');
+    note.className = 'footer-note';
+    note.textContent = 'Supabase belum dikonfigurasi — isi SUPABASE_URL dan SUPABASE_PUBLISHABLE_KEY di file index.html.';
+    document.querySelector('.screen.active').appendChild(note);
+  }
+}
+async function refreshHostStats(){
+  try{
+    const agg = await computeAggregate();
+    const cEl = document.getElementById('participantCount'); const aEl = document.getElementById('avgScore');
+    if(cEl) cEl.textContent = agg.count;
+    if(aEl) aEl.innerHTML = agg.avg + '<span style="font-size:20px;color:var(--paper-dim);">/'+CHAPTERS.length+'</span>';
+    const box = document.getElementById('chapterStats');
+    if(box){
+      box.innerHTML = CHAPTERS.map(c=>{
+        const s = agg.byChapter[c.key] || {good:0,total:0};
+        const pct = s.total ? Math.round(100*s.good/s.total) : 0;
+        return '<div class="chapter-stat"><div class="lbl2"><span>'+c.label+'</span><span class="mono">'+pct+'% aman ('+s.good+'/'+s.total+')</span></div>'+
+          '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%"></div></div></div>';
+      }).join('');
+    }
+  }catch(e){}
+}
+
+document.getElementById('hostToggle').onclick = renderHost;
+renderIntro();
+</script>
+</body>
+</html>
